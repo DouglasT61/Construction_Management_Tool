@@ -21,46 +21,56 @@ except Exception as e:
     print(f"Error loading file: {e}")
     exit(1)
 
-# Select sheets (adjust based on actual data location)
-data_sheet = df['Data Page']  # Likely contains financial data; test 'June_May21' if needed
-s_curve_sheet = df['S Curve']  # For S-Curve data
-
-# Debug: Inspect sheets
-print("First 5 rows of Data Page:\n", data_sheet.head())
-print("First column (Data Page):\n", data_sheet.iloc[:, 0].dropna().tolist())
-print("Second column (Data Page):\n", data_sheet.iloc[:, 1].dropna().tolist())
-print("First 5 rows of S Curve:\n", s_curve_sheet.head())
-
 # Function to find row index by label in a specific column
-def find_row_index(df, label, column_idx=1):
-    for i, val in enumerate(df.iloc[:, column_idx].astype(str)):
-        if label.strip().lower() in val.strip().lower():
-            return i
-    return None
+def find_row_index(df, label, column_idx=None):
+    if column_idx is not None:
+        for i, val in enumerate(df.iloc[:, column_idx].astype(str)):
+            if label.strip().lower() in val.strip().lower():
+                return i
+        return None
+    for col in df.columns:
+        for i, val in enumerate(df[col].astype(str)):
+            if label.strip().lower() in val.strip().lower():
+                return i, df.columns.get_loc(col)
+    return None, None
 
-# Extract data from Data Page (using column 1)
-revenue_idx = find_row_index(data_sheet, "Total Operating Revenues")
-revenue = data_sheet.iloc[revenue_idx + 1:, 22:].fillna(0) if revenue_idx is not None else pd.DataFrame(0, index=[0], columns=range(22, data_sheet.shape[1]))
+# Select sheets
+data_sheet = df['Variance']  # Financial data
+s_curve_sheet = df['S Curve']  # S-Curve data
 
-expenses_idx = find_row_index(data_sheet, "Total Operating Expenses")
-expenses = data_sheet.iloc[expenses_idx + 1:, 22:].fillna(0) if expenses_idx is not None else pd.DataFrame(0, index=[0], columns=range(22, data_sheet.shape[1]))
+# Extract financial data from 'Variance'
+revenue_idx = find_row_index(data_sheet, "Total Operating Revenues", 1)
+revenue = data_sheet.iloc[revenue_idx + 1:, 22:].fillna(0).infer_objects(copy=False) if revenue_idx is not None else pd.DataFrame(0, index=[0], columns=range(22, data_sheet.shape[1]))
 
-cash_flow_idx = find_row_index(data_sheet, "Operating Cash Flow After Reserves")
-cash_flow = data_sheet.iloc[cash_flow_idx + 1:, 22:].fillna(0) if cash_flow_idx is not None else pd.DataFrame(0, index=[0], columns=range(22, data_sheet.shape[1]))
+expenses_idx = find_row_index(data_sheet, "Total Operating Expenses", 1)
+expenses = data_sheet.iloc[expenses_idx + 1:, 22:].fillna(0).infer_objects(copy=False) if expenses_idx is not None else pd.DataFrame(0, index=[0], columns=range(22, data_sheet.shape[1]))
 
-units_leased_idx = find_row_index(data_sheet, "Cumulative Units Leased")
-units_leased = data_sheet.iloc[units_leased_idx + 1:, 22:].fillna(0) if units_leased_idx is not None else pd.DataFrame(0, index=[0], columns=range(22, data_sheet.shape[1]))
+cash_flow_idx = find_row_index(data_sheet, "Operating Cash Flow After Reserves", 1)
+cash_flow = data_sheet.iloc[cash_flow_idx + 1:, 22:].fillna(0).infer_objects(copy=False) if cash_flow_idx is not None else pd.DataFrame(0, index=[0], columns=range(22, data_sheet.shape[1]))
 
-# Extract S-Curve from S Curve sheet
-s_curve_proj_idx = find_row_index(s_curve_sheet, "Cumulative", 0)  # Assuming column 0 in S Curve sheet
-s_curve_act_idx = s_curve_sheet.index[s_curve_sheet.iloc[:, 0] == 'Cumulative'].tolist()
-if s_curve_proj_idx is not None and len(s_curve_act_idx) >= 2:
-    s_curve_proj = s_curve_sheet.iloc[s_curve_proj_idx + 1:, 1:19].fillna(0)  # Adjust column range
-    s_curve_act = s_curve_sheet.iloc[s_curve_act_idx[1] + 1:, 1:19].fillna(0)
+units_leased_idx = find_row_index(data_sheet, "Cumulative Units Leased", 1)
+units_leased = data_sheet.iloc[units_leased_idx + 1:, 22:].fillna(0).infer_objects(copy=False) if units_leased_idx is not None else pd.DataFrame(0, index=[0], columns=range(22, data_sheet.shape[1]))
+
+# Extract S-Curve from 'S Curve' (adjusted logic)
+s_curve_indices = []
+for i, val in enumerate(s_curve_sheet.iloc[:, 0].astype(str)):
+    if "cumulative" in val.strip().lower():
+        s_curve_indices.append(i)
+if len(s_curve_indices) >= 2:
+    s_curve_proj = s_curve_sheet.iloc[s_curve_indices[0] + 1, 1:19].fillna(0).infer_objects(copy=False)
+    s_curve_act = s_curve_sheet.iloc[s_curve_indices[1] + 1, 1:19].fillna(0).infer_objects(copy=False)
+    print("S-Curve data extracted: Projected:", s_curve_proj.values, "Actual:", s_curve_act.values)
 else:
-    print("Warning: S-Curve data not found correctly. Using zeros.")
-    s_curve_proj = pd.DataFrame(0, index=[0], columns=range(1, 19))
-    s_curve_act = pd.DataFrame(0, index=[0], columns=range(1, 19))
+    print("Warning: Insufficient 'Cumulative' rows in S Curve sheet. Checking Variance instead.")
+    variance_s_curve_idx = find_row_index(data_sheet, "Cumulative", 1)
+    if variance_s_curve_idx is not None and variance_s_curve_idx + 2 < len(data_sheet):
+        s_curve_proj = data_sheet.iloc[variance_s_curve_idx + 1, 22:40].fillna(0).infer_objects(copy=False)
+        s_curve_act = data_sheet.iloc[variance_s_curve_idx + 2, 22:40].fillna(0).infer_objects(copy=False)
+        print("S-Curve data from Variance: Projected:", s_curve_proj.values, "Actual:", s_curve_act.values)
+    else:
+        print("Warning: No valid S-Curve data found. Using zeros.")
+        s_curve_proj = pd.Series([0] * 18)
+        s_curve_act = pd.Series([0] * 18)
 
 # Constants
 equity = 11664124
@@ -111,8 +121,8 @@ def update_dashboard(time_filter):
     roe = (annual_noi / equity) * 100
 
     progress_fig = go.Figure()
-    progress_fig.add_trace(go.Scatter(x=list(range(1, 19)), y=s_curve_proj.iloc[0], name='Projected'))
-    progress_fig.add_trace(go.Scatter(x=list(range(1, 19)), y=s_curve_act.iloc[0], name='Actual'))
+    progress_fig.add_trace(go.Scatter(x=list(range(1, 19)), y=s_curve_proj, name='Projected'))
+    progress_fig.add_trace(go.Scatter(x=list(range(1, 19)), y=s_curve_act, name='Actual'))
     progress_fig.update_layout(title='Construction Progress vs. S-Curve', xaxis_title='Month', yaxis_title='% Complete')
 
     return html.Span(f"ROE: {roe:.2f}%"), progress_fig
