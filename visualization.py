@@ -9,7 +9,7 @@ import openpyxl
 app = dash.Dash(__name__)
 
 # Read the Excel file
-workbook = openpyxl.load_workbook(r'C:\Users\alt95\OneDrive\Documents\GitHub\Construction_Management_Tool\(2021.08.04) Coliseum Storage Development Tracker June 2021.xlsx', data_only=True)
+workbook = openpyxl.load_workbook(r'C:\Users\dthom\OneDrive\Personal\Hart Advisors Group\GitHub\Construction_Management_Tool\(2021.08.04) Coliseum Storage Development Tracker June 2021.xlsx', data_only=True)
 worksheet = workbook['Variance']
 data_sheet = pd.DataFrame([[cell.value for cell in row] for row in worksheet.rows])
 
